@@ -1,66 +1,205 @@
-# SourceLens
+# 🔎 SourceLens
 
-Ask questions across your **PDFs, videos and images** and get answers with **evidence**: the page, the video frame and the timestamp each claim came from. If the answer is not in your files, it says so instead of guessing.
+> Ask your **PDFs, videos and images** anything. SourceLens answers in plain language and shows its evidence: the **page**, the **video frame** and the **timestamp** each claim came from. If the answer isn't in your files, it says *"Not found"* instead of guessing.
 
-<!-- add a screenshot: ![SourceLens](docs/screenshot.png) -->
+[demo](<add-your-demo-link>)
 
-## What it does
-- **PDFs** are split into overlapping chunks.
-- **Videos** (files or links) are transcribed with Whisper; frames are described with BLIP and read with OCR (EasyOCR), and everything is merged by time.
-- **Images** get a BLIP caption plus OCR text.
-- **Questions** use hybrid search (meaning + keywords), a cross-encoder reranker, and an LLM that must cite its sources.
-- A web UI (Gradio, custom dark-blue and yellow theme) shows the answer, the evidence pictures and clickable timestamps, and lets you remove sources.
+![SourceLens screenshot](docs/screenshot.png)
 
-## How it works
+*"Why does the professor ask the class why nobody protested?"* → a cited answer, the matching video frames, and a link that jumps to the right second.
+
+---
+
+## Features
+
+- **One library for every format**: PDFs, video files, video links (YouTube, Facebook, Instagram) and images.
+- **Videos are fully understood**: Whisper transcribes the speech, BLIP describes the frames, and EasyOCR reads text shown on screen. Everything is merged by time, so a question can match what was *said* and what was *shown*.
+- **Hybrid search + reranking**: meaning-based search and keyword search run together, then a cross-encoder picks the best passages.
+- **Answers with receipts**: every claim carries a citation like `[lecture.mp4 01:20]` or `[guide.pdf p.12]`, and the UI shows the source page or frame.
+- **Honest refusals**: when the sources don't contain the answer, it replies "Not found in the sources."
+- **Scoped search**: limit a question to one or more files, so "what is the main topic?" means *this* video.
+- **Library management**: add, remove and re-add sources from the UI; recent questions can be reused or deleted.
+- **Measured, not guessed**: built-in evaluation scripts (hit@k, MRR, ablations, answer faithfulness) with every experiment saved in `eval/`.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    PDF[PDF] --> CH[Text chunks]
+    VID[Video file or link] --> WH[Whisper: speech]
+    VID --> FR[BLIP: frame captions]
+    VID --> OC[EasyOCR: on-screen text]
+    IMG[Image] --> CAP[BLIP caption + OCR]
+    WH --> MG[Merge by time window]
+    FR --> MG
+    OC --> MG
+    CH --> EMB[Embeddings]
+    MG --> EMB
+    CAP --> EMB
+    EMB --> DB[(Chroma index)]
+    Q[Your question] --> DS[Dense search]
+    Q --> BM[BM25 keyword search]
+    DB --> DS
+    DB --> BM
+    DS --> RRF[Rank fusion]
+    BM --> RRF
+    RRF --> RR[Cross-encoder reranker]
+    RR --> LLM[LLM with citations]
+    LLM --> ANS[Answer + page / frame / timestamp]
 ```
-PDF ----> text chunks ------------------------------+
-Video --> Whisper speech + BLIP frames + OCR text --+--> embeddings --> Chroma index
-Image --> BLIP caption + OCR text -------------------+
 
-Question --> dense search + BM25 --> rank fusion --> cross-encoder rerank --> LLM (Groq) --> answer + citations
-```
+Every source becomes small text passages with the same record format (`source`, `page or second`, `type`, `text`), so retrieval doesn't care whether a passage came from a PDF or a video.
+
+## How each source is processed
+
+| Source | What happens |
+|---|---|
+| **PDF** | Text is split into overlapping chunks of about 200 words, stored with the page number. |
+| **Video** | Audio goes to Whisper (speech in ~30 s chunks). Frames are sampled when the scene changes, described by BLIP and read by OCR. Descriptions and on-screen text are merged into the matching speech chunk; new on-screen text gets its own short record. Videos with almost no speech (music) keep their frame records. |
+| **Image** | The EXIF rotation is applied, then BLIP writes a caption and OCR reads any text. |
+| **Video link** | `yt-dlp` downloads the video (up to 10 minutes), then it is processed like a file. The link is kept so citations can jump to the timestamp. |
 
 ## Results
-Measured on 36 hand-written questions over ~15 sources (PDFs, lectures, a cartoon, a coding lesson). "hit@6": a correct source is in the top 6. "MRR": how near the top it is.
 
-| retrieval setup | hit@6 | MRR |
+Measured on **36 hand-written questions** over **9 sources** (2 PDFs, 6 videos, 1 image), `k = 6`. *hit@6*: a correct source is in the top 6. *MRR*: how close to the top the first correct source is (1.00 = always first).
+
+| Retrieval setup | hit@6 | MRR |
 |---|---|---|
-| dense embeddings only | 0.97 | 0.74 |
+| Dense embeddings only | 0.97 | 0.74 |
 | BM25 keywords only | 0.86 | 0.69 |
-| hybrid (dense + BM25) | 0.89 | 0.78 |
-| dense + reranker | 0.97 | 0.90 |
-| **hybrid + reranker (default)** | **1.00** | **0.91** |
+| Hybrid (dense + BM25) | 0.89 | 0.78 |
+| Dense + reranker | 0.97 | 0.90 |
+| **Hybrid + reranker (default)** | **1.00** | **0.91** |
 
-Answer check on a sample of 12 answerable questions: 12/12 answered, 12/12 cited a correct source, 11/12 judged fully supported by the retrieved text (the judge is the same model that writes the answers, so treat this as a rough guide). All 3 unanswerable questions got "Not found".
+**What the experiments showed**
+- The reranker gives the biggest gain (MRR 0.78 → 0.91).
+- BM25 earns its place on rare names: a question about a watermark's name is missed by dense search alone and found by hybrid search.
+- Questions with no matching words ("How tall is the speaker?" → "six foot nine") are only solved by the reranker.
 
+=======
+**Answer check** on a sample of 12 answerable questions: 12/12 answered, 12/12 cited a correct source, 11/12 judged fully supported by the retrieved text. All 3 unanswerable questions got "Not found". The judge is the same model that writes the answers, so treat this as a sanity check.
 
-## Run it
-Needs a free [Groq](https://console.groq.com) API key.
+## Bugs found by the evaluation
+
+| Problem | Symptom | Fix |
+|---|---|---|
+| A phone photo stored sideways (EXIF rotation) | Wrong caption, OCR found nothing | Apply the rotation before processing |
+| The same lecture in two files | Scores looked worse than they were | Treat identical sources as aliases in the evaluation |
+| On-screen text buried in long transcript chunks | Questions about slides and titles failed | Store on-screen text as its own short record, without repeats |
+| Frame captions of talking-head videos ("a man in front of a wall") | Noise crowded out real answers | Fold captions into the speech chunk instead of indexing them alone |
+| Reranker only saw 20 candidates | A correct passage was dropped before reranking | Re-checked with 10, 20, 30 and 40; 20 is the cheapest setting that works |
+
+## Tech stack
+
+Python · Whisper (via Groq) · BLIP · EasyOCR · Sentence-Transformers (`bge-small-en`) · cross-encoder reranker (`ms-marco-MiniLM`) · BM25 · ChromaDB · Groq LLM (`openai/gpt-oss-120b`) · yt-dlp · PyMuPDF · OpenCV · Gradio · Docker
+
+## Project structure
+
+```
+├── app.py            # Gradio UI (dark blue and yellow theme)
+├── main.py           # command line: ingest / ask
+├── pipeline.py       # ingest or remove one source
+├── ingest_pdf.py  ingest_video.py  ingest_audio.py  ingest_image.py  ingest_url.py
+├── ocr.py            # EasyOCR helper
+├── merge.py          # folds frames and on-screen text into speech chunks
+├── store.py          # Chroma index
+├── retrieval.py      # dense + BM25 + rank fusion + reranker
+├── query.py          # prompt, LLM call, citations
+├── config.py         # settings (override with environment variables)
+├── eval.py  answer_eval.py        # retrieval and answer evaluation
+├── show.py  sources.py  debug.py  # helpers to inspect the index
+├── eval/             # question set and the saved result of every experiment
+├── data/  store/     # your files and the search index (git-ignored)
+├── Dockerfile  docker-compose.yml
+└── requirements.txt  .env.example
+```
+
+## Getting started
+
+You need a free [Groq](https://console.groq.com) API key.
 
 ```bash
-cp .env.example .env        # then put your key in .env
+git clone https://github.com/<your-username>/sourcelens.git
+cd sourcelens
+
+python -m venv .venv
+.venv\Scripts\activate          # Windows  (source .venv/bin/activate on macOS/Linux)
 pip install -r requirements.txt
-python app.py               # open http://127.0.0.1:7860
+
+# add your key
+cp .env.example .env            # then edit .env and paste your key
+
+python app.py
 ```
 
-With Docker (the first build downloads PyTorch and is slow):
+Open <http://127.0.0.1:7860>. The first question downloads the models and is slow. Add files with **Add to library**, then ask.
+
+**Command line**
+
 ```bash
-docker compose up --build   # open http://localhost:7860
+python main.py ingest data/report.pdf
+python main.py ingest "https://www.youtube.com/shorts/<video-id>"
+python main.py ask "What are the main risks mentioned?"
 ```
-The first question downloads the models and is slow. Command line: `python main.py ingest <file or link>` and `python main.py ask "question"`.
 
-## Project layout
+YouTube links need [Deno](https://deno.com) installed (`winget install DenoLand.Deno` on Windows).
+
+## 🐳 Run with Docker
+
+### Build the image
+
+```bash
+docker build -t sourcelens .
 ```
-app.py            web UI (Gradio)               main.py            command line
-pipeline.py       ingest / remove a source
-ingest_pdf.py  ingest_video.py  ingest_audio.py  ingest_image.py  ingest_url.py
-ocr.py  merge.py  store.py  retrieval.py  query.py  config.py
-eval.py           retrieval evaluation          answer_eval.py     answer evaluation
-eval/             saved results of every experiment
+
+### Configure environment variables
+
+Create a `.env` file containing your credentials:
+
 ```
+GROQ_API_KEY=your_groq_api_key
+LLM_MODEL=openai/gpt-oss-120b
+WHISPER_MODEL=whisper-large-v3-turbo
+```
+
+Do not commit `.env` or expose API keys in the repository.
+
+### Run the container
+
+```bash
+docker compose up --build
+```
+
+Open <http://localhost:7860>. The `data/` and `store/` folders are mounted into the container, so your files and the index survive restarts. The first build downloads PyTorch (CPU build) and takes a while.
+
+## Configuration
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `GROQ_API_KEY` | none | Groq API key (required) |
+| `LLM_MODEL` | `openai/gpt-oss-120b` | Model that writes the answers |
+| `WHISPER_MODEL` | `whisper-large-v3-turbo` | Speech-to-text model |
+| `OCR_LANGS` | `en` | OCR languages, e.g. `en,ar` for Arabic |
+| `MERGE_FRAMES` | `1` | Fold frame descriptions into speech chunks |
+| `SCREEN_RECORDS` | `1` | Store on-screen text as its own record |
+| `OCR_CORNERS` | `0` | Extra OCR pass on the image corners (slower) |
+
+## Evaluation
+
+```bash
+python eval.py            # retrieval: hit@6, MRR, ablations, latency  → eval/results.md
+python answer_eval.py 3   # answers: cited? supported? refused when it should? (every 3rd question)
+```
+
+`eval/questions.json` holds the 36 questions. They refer to my own files in `data/`, which aren't included, so the set can't be re-run as-is, but the format is simple to copy for your own documents. The results of every experiment are saved in `eval/`.
 
 ## Limitations
-- The test set is small and written by me; results show it works on this data, not that it is perfect.
-- Embeddings are English-only. Processing runs on CPU, so long videos are slow.
-- Link downloads depend on the platform (YouTube also needs Deno installed); upload the file if a link fails.
+
+- The test set is small and written by me; the numbers show it works on this data, not that it is perfect.
+- Embeddings are English-only, so non-English text is retrieved less well. Processing runs on CPU, so long videos are slow.
+- Link downloads depend on the platform; if one fails, download the video and add the file.
 - The same content in two files is not detected as a duplicate.
+
+## About
+
+Built by [Hager Hegazy](https://github.com/hagerhegazy).
