@@ -4,7 +4,6 @@
 
 [demo](<add-your-demo-link>)
 
-![SourceLens screenshot](docs/screenshot.png)
 
 *"Why does the professor ask the class why nobody protested?"* → a cited answer, the matching video frames, and a link that jumps to the right second.
 
@@ -71,24 +70,6 @@ Measured on **36 hand-written questions** over **9 sources** (2 PDFs, 6 videos, 
 | Dense + reranker | 0.97 | 0.90 |
 | **Hybrid + reranker (default)** | **1.00** | **0.91** |
 
-**What the experiments showed**
-- The reranker gives the biggest gain (MRR 0.78 → 0.91).
-- BM25 earns its place on rare names: a question about a watermark's name is missed by dense search alone and found by hybrid search.
-- Questions with no matching words ("How tall is the speaker?" → "six foot nine") are only solved by the reranker.
-
-=======
-**Answer check** on a sample of 12 answerable questions: 12/12 answered, 12/12 cited a correct source, 11/12 judged fully supported by the retrieved text. All 3 unanswerable questions got "Not found". The judge is the same model that writes the answers, so treat this as a sanity check.
-
-## Bugs found by the evaluation
-
-| Problem | Symptom | Fix |
-|---|---|---|
-| A phone photo stored sideways (EXIF rotation) | Wrong caption, OCR found nothing | Apply the rotation before processing |
-| The same lecture in two files | Scores looked worse than they were | Treat identical sources as aliases in the evaluation |
-| On-screen text buried in long transcript chunks | Questions about slides and titles failed | Store on-screen text as its own short record, without repeats |
-| Frame captions of talking-head videos ("a man in front of a wall") | Noise crowded out real answers | Fold captions into the speech chunk instead of indexing them alone |
-| Reranker only saw 20 candidates | A correct passage was dropped before reranking | Re-checked with 10, 20, 30 and 40; 20 is the cheapest setting that works |
-
 ## Tech stack
 
 Python · Whisper (via Groq) · BLIP · EasyOCR · Sentence-Transformers (`bge-small-en`) · cross-encoder reranker (`ms-marco-MiniLM`) · BM25 · ChromaDB · Groq LLM (`openai/gpt-oss-120b`) · yt-dlp · PyMuPDF · OpenCV · Gradio · Docker
@@ -132,17 +113,8 @@ cp .env.example .env            # then edit .env and paste your key
 python app.py
 ```
 
-Open <http://127.0.0.1:7860>. The first question downloads the models and is slow. Add files with **Add to library**, then ask.
+Open <http://127.0.0.1:7860>. The first question downloads the models. Add files with **Add to library**, then ask.
 
-**Command line**
-
-```bash
-python main.py ingest data/report.pdf
-python main.py ingest "https://www.youtube.com/shorts/<video-id>"
-python main.py ask "What are the main risks mentioned?"
-```
-
-YouTube links need [Deno](https://deno.com) installed (`winget install DenoLand.Deno` on Windows).
 
 ## 🐳 Run with Docker
 
@@ -193,13 +165,3 @@ python answer_eval.py 3   # answers: cited? supported? refused when it should? (
 
 `eval/questions.json` holds the 36 questions. They refer to my own files in `data/`, which aren't included, so the set can't be re-run as-is, but the format is simple to copy for your own documents. The results of every experiment are saved in `eval/`.
 
-## Limitations
-
-- The test set is small and written by me; the numbers show it works on this data, not that it is perfect.
-- Embeddings are English-only, so non-English text is retrieved less well. Processing runs on CPU, so long videos are slow.
-- Link downloads depend on the platform; if one fails, download the video and add the file.
-- The same content in two files is not detected as a duplicate.
-
-## About
-
-Built by [Hager Hegazy](https://github.com/hagerhegazy).
