@@ -1,0 +1,16 @@
+services:
+  app:
+    build: .
+    ports:
+      - "7860:7860"
+    env_file: .env
+    volumes:
+      - ./data:/app/data          # your files
+      - ./store:/app/store        # the search index
+      - model-cache:/home/appuser/.cache
+      - easyocr-cache:/home/appuser/.EasyOCR
+    restart: unless-stopped
+
+volumes:
+  model-cache:
+  easyocr-cache:

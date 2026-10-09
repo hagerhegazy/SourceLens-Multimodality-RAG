@@ -1,0 +1,15 @@
+pymupdf
+opencv-python
+transformers
+torch
+torchvision
+pillow
+sentence-transformers
+chromadb
+groq
+python-dotenv
+rank-bm25
+imageio-ffmpeg
+easyocr
+yt-dlp[default]
+gradio
