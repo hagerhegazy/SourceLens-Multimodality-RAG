@@ -33,11 +33,6 @@ Measured on 36 hand-written questions over ~15 sources (PDFs, lectures, a cartoo
 
 Answer check on a sample of 12 answerable questions: 12/12 answered, 12/12 cited a correct source, 11/12 judged fully supported by the retrieved text (the judge is the same model that writes the answers, so treat this as a rough guide). All 3 unanswerable questions got "Not found".
 
-## What went wrong along the way
-- A phone photo was stored sideways (EXIF rotation), so the caption and OCR were wrong. Fix: apply the rotation before processing.
-- The same lecture existed as two files and distorted the scores. Fix: treat identical sources as aliases in the evaluation.
-- Text read from the screen was buried inside long transcript chunks and could not be found. Fix: store on-screen text as its own short record, without repeats.
-- Captions of talking-head videos were noise ("a man in front of a wall"). Fix: fold them into the matching speech chunk.
 
 ## Run it
 Needs a free [Groq](https://console.groq.com) API key.
