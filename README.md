@@ -2,7 +2,7 @@
 
 > Ask your **PDFs, videos and images** anything. SourceLens answers in plain language and shows its evidence: the **page**, the **video frame** and the **timestamp** each claim came from. If the answer isn't in your files, it says *"Not found"* instead of guessing.
 
-[demo]([demo-link](https://lnkd.in/p/evwJE_7i))
+[demo][demo-link](https://lnkd.in/p/evwJE_7i)
 
 
 *"Why does the professor ask the class why nobody protested?"* → a cited answer, the matching video frames, and a link that jumps to the right second.
